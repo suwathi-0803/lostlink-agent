@@ -58,12 +58,18 @@ LOST = [
 ]
 
 
+RESET_ORDER = ["claims", "notifications", "audit_log", "lost_secrets", "found_hidden_marks",
+               "lost_items", "found_items", "users"]  # children before parents (foreign keys)
+
+
 def reset_and_seed() -> None:
-    path = db.db_path()
-    if path.exists():
-        path.unlink()
+    # Empty the tables instead of deleting the file: Windows will not delete a
+    # database file that another process (or this one) still has open.
     db.init_db()
     with db.connect() as conn:
+        for table in RESET_ORDER:
+            conn.execute(f"DELETE FROM {table}")
+        conn.execute("DELETE FROM sqlite_sequence")  # restart codes at L001 / F001 / C001
         conn.executemany("INSERT INTO users (id, name, role) VALUES (?, ?, ?)", USERS)
         for finder, cat, color, brand, loc, ago, desc, marks in FOUND:
             cur = conn.execute(

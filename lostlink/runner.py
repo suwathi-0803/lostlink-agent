@@ -159,7 +159,17 @@ def to_dot(graph) -> str:
 async def reset_demo() -> None:
     async with mcp_client.open_session() as s:
         await mcp_client.call_officer_tool(s, "officer_reset_demo")
-    for suffix in ("", "-wal", "-shm"):
-        p = config.CHECKPOINT_DB.with_name(config.CHECKPOINT_DB.name + suffix)
-        if p.exists():
-            p.unlink()
+    # Clear saved conversations. Emptying the tables works even on Windows, where a
+    # file that is still open somewhere cannot be deleted.
+    if config.CHECKPOINT_DB.exists():
+        import sqlite3
+        conn = sqlite3.connect(config.CHECKPOINT_DB, timeout=10)
+        try:
+            for table in ("checkpoints", "writes"):
+                try:
+                    conn.execute(f"DELETE FROM {table}")
+                except sqlite3.OperationalError:  # table not created yet
+                    pass
+            conn.commit()
+        finally:
+            conn.close()
