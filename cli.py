@@ -1,13 +1,13 @@
 """Terminal version of LostLink (handy for quick testing without the web UI).
 
-    python cli.py                 # chat as Karthik S (u1)
-    python cli.py --user u2       # chat as Aditi R
-    python cli.py --officer       # approve / reject pending claims
+    python cli.py                 # log in as a student and chat
+    python cli.py --officer       # log in as the security officer and approve / reject claims
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+from getpass import getpass
 
 from langchain_core.messages import AIMessage, ToolMessage
 
@@ -30,9 +30,19 @@ def show(messages) -> None:
             print(f"\n{LABELS.get(m.name, 'LostLink')}: {m.text}\n")
 
 
-async def chat(user_id: str) -> None:
-    users = {u["id"]: u["name"] for u in await runner.list_users()}
-    name = users.get(user_id, user_id)
+async def sign_in(login_id: str, role: str) -> dict | None:
+    res = await runner.login(login_id, getpass("Password: "))
+    if not res.get("ok") or res["role"] != role:
+        print("Wrong register number or password.")
+        return None
+    return res
+
+
+async def chat() -> None:
+    user = await sign_in(input("Register number: ").strip(), "student")
+    if not user:
+        return
+    user_id, name = user["user_id"], user["name"]
     thread = f"chat-{user_id}"
     print(f"LostLink - logged in as {name}. Type 'quit' to exit.\n")
     show(await runner.load_thread(thread))
@@ -50,6 +60,8 @@ async def chat(user_id: str) -> None:
 
 
 async def officer() -> None:
+    if not await sign_in("security", "officer"):
+        return
     data = await runner.officer_snapshot()
     if not data["pending"]:
         print("No claims waiting for approval.")
@@ -67,7 +79,6 @@ async def officer() -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--user", default="u1")
     ap.add_argument("--officer", action="store_true")
     args = ap.parse_args()
-    asyncio.run(officer() if args.officer else chat(args.user))
+    asyncio.run(officer() if args.officer else chat())

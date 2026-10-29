@@ -26,6 +26,17 @@ EXAMPLES = [
     "I found a black Puma backpack at the bus bay just now. There's a Casio calculator and a notebook with the name Meera inside.",
     "What can you do?",
 ]
+DEMO_ACCOUNTS = """
+| Student | Register number | Password |
+|---|---|---|
+| Karthik S | 41110001 | karthik123 |
+| Aditi R | 41110002 | aditi123 |
+| Meera J | 41110003 | meera123 |
+| Rahul V | 41110004 | rahul123 |
+| Arjun P | 41110005 | arjun123 |
+
+The security officer password is `OFFICER_PASSWORD` in the `.env` file.
+"""
 
 st.markdown("""
 <style>
@@ -73,6 +84,73 @@ def get_users() -> list[dict]:
     return arun(runner.list_users())
 
 
+# --------------------------------------------------------------------------- login
+
+def sign_in(login_id: str, password: str, expected_role: str) -> None:
+    if not login_id.strip() or not password:
+        st.error("Enter your login details.")
+        return
+    try:
+        res = arun(runner.login(login_id, password))
+    except Exception as exc:  # noqa: BLE001
+        st.error(friendly_error(exc))
+        return
+    if not res.get("ok"):
+        st.error(res.get("error", "Login failed."))
+        return
+    if res["role"] != expected_role:
+        st.error("Wrong register number or password.")
+        return
+    st.session_state["auth"] = res
+    st.session_state.pop("threads", None)
+    st.rerun()
+
+
+def login_page() -> None:
+    _, mid, _ = st.columns([1, 2, 1])
+    with mid:
+        st.markdown("## 🔎 LostLink")
+        st.caption("Agentic campus lost & found · LangGraph multi-agent + MCP tools")
+        student_tab, officer_tab, new_tab = st.tabs(["Student login", "Security officer", "New student"])
+
+        with student_tab:
+            with st.form("student-login"):
+                reg = st.text_input("Register number")
+                pw = st.text_input("Password", type="password")
+                if st.form_submit_button("Log in", type="primary", width="stretch"):
+                    sign_in(reg, pw, "student")
+
+        with officer_tab:
+            with st.form("officer-login"):
+                st.caption("For security office staff. The officer dashboard shows confidential details.")
+                pw = st.text_input("Officer password", type="password")
+                if st.form_submit_button("Log in as officer", type="primary", width="stretch"):
+                    sign_in("security", pw, "officer")
+
+        with new_tab:
+            with st.form("sign-up"):
+                reg = st.text_input("Register number", help="6 to 12 digits")
+                name = st.text_input("Full name")
+                pw = st.text_input("Password", type="password", help="At least 6 characters")
+                pw2 = st.text_input("Confirm password", type="password")
+                if st.form_submit_button("Create account", type="primary", width="stretch"):
+                    if pw != pw2:
+                        st.error("The two passwords don't match.")
+                    else:
+                        try:
+                            res = arun(runner.sign_up(reg, name, pw))
+                        except Exception as exc:  # noqa: BLE001
+                            res = {"ok": False, "error": friendly_error(exc)}
+                        if res.get("ok"):
+                            st.session_state["auth"] = res
+                            st.session_state.pop("threads", None)
+                            st.rerun()
+                        st.error(res.get("error", "Could not create the account."))
+
+        with st.expander("Demo accounts"):
+            st.markdown(DEMO_ACCOUNTS)
+
+
 # --------------------------------------------------------------------------- chat rendering
 
 def render_messages(messages: list) -> None:
@@ -114,31 +192,10 @@ def render_messages(messages: list) -> None:
             pending = []
 
 
-# --------------------------------------------------------------------------- sidebar
-
-users = get_users()
-students = [u for u in users if u["role"] == "student"]
-
-with st.sidebar:
-    st.markdown("## 🔎 LostLink")
-    st.caption("Agentic campus lost & found · LangGraph multi-agent + MCP tools")
-    view = st.radio("View", ["Student", "Security Officer", "How it works"], label_visibility="collapsed")
-    st.divider()
-
-    key_problem = check_api_key()
-    st.markdown(f"<div class='small-muted'>LLM: <b>{config.LLM_PROVIDER}</b> · {config.LLM_MODEL}</div>",
-                unsafe_allow_html=True)
-    if key_problem:
-        st.warning(key_problem)
-
 # --------------------------------------------------------------------------- student view
 
-if view == "Student":
+def student_view(user_id: str, user_name: str) -> None:
     with st.sidebar:
-        st.divider()
-        names = {u["id"]: u["name"] for u in students}
-        user_id = st.selectbox("Logged in as", list(names), format_func=lambda k: names[k])
-        user_name = names[user_id]
         threads = st.session_state.setdefault("threads", {})
         thread_id = threads.setdefault(user_id, f"chat-{user_id}")
         c1, c2 = st.columns(2)
@@ -203,12 +260,13 @@ if view == "Student":
             st.stop()
         st.rerun()
 
+
 # --------------------------------------------------------------------------- officer view
 
-elif view == "Security Officer":
+def officer_view() -> None:
     with st.sidebar:
-        st.divider()
-        if st.button("Reset demo data", width="stretch"):
+        if st.button("Reset demo data", width="stretch",
+                     help="Reloads the demo items and accounts; new student accounts are removed."):
             arun(runner.reset_demo())
             st.session_state.pop("threads", None)
             get_users.clear()
@@ -219,7 +277,7 @@ elif view == "Security Officer":
     st.caption("Human-in-the-loop: claims that pass the AI's blind verification wait here. "
                "Approving resumes the paused LangGraph workflow and releases the item.")
     data = arun(runner.officer_snapshot())
-    names = {u["id"]: u["name"] for u in users}
+    names = {u["id"]: u["name"] for u in get_users()}
 
     tabs = st.tabs([f"Pending approvals ({len(data['pending'])})", "Found register", "Lost reports",
                     "All claims", "Audit log"])
@@ -292,9 +350,10 @@ elif view == "Security Officer":
     with tabs[4]:
         st.dataframe(pd.DataFrame(data["audit"]), width="stretch", hide_index=True)
 
+
 # --------------------------------------------------------------------------- architecture view
 
-else:
+def architecture_view() -> None:
     st.markdown("### 🧩 How LostLink works")
     arch = arun(runner.architecture())
 
@@ -315,5 +374,41 @@ else:
 """)
     st.markdown("**MCP tools discovered from the LostLink server**")
     tools = pd.DataFrame(arch["tools"])
-    tools["available to agents"] = tools["name"].isin(arch["agent_tools"]).map({True: "yes", False: "no (officer/UI only)"})
+    tools["available to agents"] = tools["name"].isin(arch["agent_tools"]).map(
+        {True: "yes", False: "no (officer / login / UI only)"})
     st.dataframe(tools, width="stretch", hide_index=True)
+
+
+# --------------------------------------------------------------------------- page
+
+auth = st.session_state.get("auth")
+if not auth:
+    login_page()
+    st.stop()
+
+is_officer = auth["role"] == "officer"
+with st.sidebar:
+    st.markdown("## 🔎 LostLink")
+    st.caption("Agentic campus lost & found · LangGraph multi-agent + MCP tools")
+    who = "Officer account" if is_officer else f"Register no. {auth['reg_no']}"
+    st.markdown(f"**{auth['name']}**  \n<span class='small-muted'>{who}</span>", unsafe_allow_html=True)
+    if st.button("Log out", width="stretch"):
+        for key in ("auth", "threads", "queued_prompt"):
+            st.session_state.pop(key, None)
+        st.rerun()
+    view = st.radio("View", ["Dashboard" if is_officer else "My chat", "How it works"],
+                    label_visibility="collapsed")
+    st.divider()
+    st.markdown(f"<div class='small-muted'>LLM: <b>{config.LLM_PROVIDER}</b> · {config.LLM_MODEL}</div>",
+                unsafe_allow_html=True)
+    key_problem = check_api_key()
+    if key_problem:
+        st.warning(key_problem)
+    st.divider()
+
+if view == "How it works":
+    architecture_view()
+elif is_officer:
+    officer_view()
+else:
+    student_view(auth["user_id"], auth["name"])

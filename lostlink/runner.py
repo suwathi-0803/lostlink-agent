@@ -107,6 +107,17 @@ async def add_hidden_marks(found_code: str, marks: str) -> dict:
                                                   found_code=found_code, marks=marks)
 
 
+async def login(login_id: str, password: str) -> dict:
+    """Check credentials through the MCP server's authenticate tool."""
+    async with mcp_client.open_session() as s:
+        return await mcp_client.call_tool(s, "authenticate", login=login_id, password=password)
+
+
+async def sign_up(reg_no: str, name: str, password: str) -> dict:
+    async with mcp_client.open_session() as s:
+        return await mcp_client.call_tool(s, "register_student", reg_no=reg_no, name=name, password=password)
+
+
 async def list_users() -> list[dict]:
     async with mcp_client.open_session() as s:
         return (await mcp_client.call_tool(s, "list_users"))["users"]

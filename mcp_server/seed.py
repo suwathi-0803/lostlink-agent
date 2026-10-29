@@ -1,18 +1,24 @@
 """Demo data so the agent has a realistic campus to work with."""
 from __future__ import annotations
 
+import os
 from datetime import date, timedelta
 
 from . import db
 
+# (id, name, role, login id, demo password). Passwords are hashed before they are stored.
 USERS = [
-    ("u1", "Karthik S", "student"),
-    ("u2", "Aditi R", "student"),
-    ("u3", "Meera J", "student"),
-    ("u4", "Rahul V", "student"),
-    ("u5", "Arjun P", "student"),
-    ("officer", "Security Office", "officer"),
+    ("u1", "Karthik S", "student", "41110001", "karthik123"),
+    ("u2", "Aditi R", "student", "41110002", "aditi123"),
+    ("u3", "Meera J", "student", "41110003", "meera123"),
+    ("u4", "Rahul V", "student", "41110004", "rahul123"),
+    ("u5", "Arjun P", "student", "41110005", "arjun123"),
 ]
+OFFICER = ("officer", "Security Office", "officer", "security")
+
+
+def officer_password() -> str:
+    return os.getenv("OFFICER_PASSWORD", "") or "officer123"
 
 
 def _d(days_ago: int) -> str:
@@ -54,7 +60,7 @@ LOST = [
      "my college ID card\nabout 200 rupees\nmetro card"),
     ("u2", "id_card", "", "", "Library", 3,
      "College ID card on a blue lanyard",
-     "name Aditi R, register number 41110123"),
+     "name Aditi R, register number 41110002"),
 ]
 
 
@@ -70,7 +76,10 @@ def reset_and_seed() -> None:
         for table in RESET_ORDER:
             conn.execute(f"DELETE FROM {table}")
         conn.execute("DELETE FROM sqlite_sequence")  # restart codes at L001 / F001 / C001
-        conn.executemany("INSERT INTO users (id, name, role) VALUES (?, ?, ?)", USERS)
+        for uid, name, role, login, password in USERS + [(*OFFICER, officer_password())]:
+            pw_hash, salt = db.hash_password(password)
+            conn.execute("INSERT INTO users (id, name, role, reg_no, password_hash, salt) VALUES (?, ?, ?, ?, ?, ?)",
+                         (uid, name, role, login, pw_hash, salt))
         for finder, cat, color, brand, loc, ago, desc, marks in FOUND:
             cur = conn.execute(
                 "INSERT INTO found_items (finder_id, category, color, brand, location, date_found,"
@@ -93,9 +102,19 @@ def reset_and_seed() -> None:
 def ensure_seeded() -> None:
     db.init_db()
     with db.connect() as conn:
-        has_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    if not has_users:
+        has_logins = conn.execute("SELECT COUNT(*) FROM users WHERE password_hash != ''").fetchone()[0]
+    if not has_logins:  # new database, or one created before login existed
         reset_and_seed()
+    sync_officer_password()
+
+
+def sync_officer_password() -> None:
+    """Keep the officer account's password in step with OFFICER_PASSWORD in .env."""
+    with db.connect() as conn:
+        row = conn.execute("SELECT password_hash, salt FROM users WHERE id = ?", (OFFICER[0],)).fetchone()
+        if row and not db.check_password(officer_password(), row["password_hash"], row["salt"]):
+            pw_hash, salt = db.hash_password(officer_password())
+            conn.execute("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?", (pw_hash, salt, OFFICER[0]))
 
 
 if __name__ == "__main__":

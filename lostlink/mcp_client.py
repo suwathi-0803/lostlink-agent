@@ -111,13 +111,13 @@ def _parse_result(result) -> dict:
         return {"text": text}
 
 
-async def call_tool(session, name: str, **arguments) -> dict:
-    """Call an MCP tool directly (used by the dashboard and the officer workflow)."""
-    return _parse_result(await session.call_tool(name, arguments))
+async def call_tool(session, tool_name: str, /, **arguments) -> dict:
+    """Call an MCP tool directly (used by the dashboard, the login screen and the officer workflow)."""
+    return _parse_result(await session.call_tool(tool_name, arguments))
 
 
-async def call_officer_tool(session, name: str, **arguments) -> dict:
-    return await call_tool(session, name, officer_token=config.OFFICER_TOKEN, **arguments)
+async def call_officer_tool(session, tool_name: str, /, **arguments) -> dict:
+    return await call_tool(session, tool_name, officer_token=config.OFFICER_TOKEN, **arguments)
 
 
 async def read_campus_info(session) -> str:

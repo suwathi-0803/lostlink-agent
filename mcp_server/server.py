@@ -535,10 +535,49 @@ def list_notifications(actor_id: str = "", mark_read: bool = False) -> dict:
 
 @mcp.tool()
 def list_users() -> dict:
-    """Demo users (no secrets)."""
+    """Users and their roles (never passwords)."""
     with db.connect() as conn:
-        rows = conn.execute("SELECT id, name, role FROM users ORDER BY id").fetchall()
+        rows = conn.execute("SELECT id, name, role, reg_no FROM users ORDER BY id").fetchall()
     return {"users": [dict(r) for r in rows]}
+
+
+# --------------------------------------------------------------------------- login (UI only, never given to agents)
+
+@mcp.tool()
+def authenticate(login: str, password: str) -> dict:
+    """Check a register number (or 'security' for the officer) and password.
+
+    Returns the user's id, name and role on success. Passwords are compared against a salted
+    PBKDF2 hash; every attempt is written to the audit log.
+    """
+    login = (login or "").strip().lower()
+    with db.connect() as conn:
+        row = conn.execute("SELECT * FROM users WHERE lower(reg_no) = ?", (login,)).fetchone()
+        ok = bool(row) and db.check_password(password or "", row["password_hash"], row["salt"])
+        db.log(conn, "authenticate", row["id"] if row else login, "login ok" if ok else "login FAILED")
+    if not ok:
+        return {"ok": False, "error": "Wrong register number or password."}
+    return {"ok": True, "user_id": row["id"], "name": row["name"], "role": row["role"], "reg_no": row["reg_no"]}
+
+
+@mcp.tool()
+def register_student(reg_no: str, name: str, password: str) -> dict:
+    """Create a student account. Register number: 6-12 digits; password: at least 6 characters."""
+    reg_no, name = (reg_no or "").strip(), (name or "").strip()
+    if not reg_no.isdigit() or not 6 <= len(reg_no) <= 12:
+        return {"ok": False, "error": "Register number must be 6 to 12 digits."}
+    if len(name) < 2:
+        return {"ok": False, "error": "Please enter your name."}
+    if len(password or "") < 6:
+        return {"ok": False, "error": "Password must be at least 6 characters."}
+    with db.connect() as conn:
+        if conn.execute("SELECT 1 FROM users WHERE reg_no = ? OR id = ?", (reg_no, reg_no)).fetchone():
+            return {"ok": False, "error": "An account with this register number already exists."}
+        pw_hash, salt = db.hash_password(password)
+        conn.execute("INSERT INTO users (id, name, role, reg_no, password_hash, salt) VALUES (?, ?, 'student', ?, ?, ?)",
+                     (reg_no, name, reg_no, pw_hash, salt))
+        db.log(conn, "register_student", reg_no, f"new student account: {name}")
+    return {"ok": True, "user_id": reg_no, "name": name, "role": "student", "reg_no": reg_no}
 
 
 if __name__ == "__main__":
