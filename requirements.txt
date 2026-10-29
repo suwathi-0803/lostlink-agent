@@ -1,0 +1,13 @@
+langgraph>=1.2,<2
+langgraph-checkpoint-sqlite>=3.0
+langchain>=1.4,<2
+langchain-core>=1.7
+langchain-mcp-adapters>=0.3,<0.4
+mcp>=1.30,<2
+langchain-groq>=1.1
+langchain-google-genai>=4.4
+streamlit>=1.50
+pandas>=2.2
+rapidfuzz>=3.9
+python-dotenv>=1.0
+pytest>=8.0
