@@ -1,5 +1,12 @@
 # LostLink — Agentic Campus Lost & Found
+## Live Demo
 
+**Try it:** https://lostlink-agent-cpq5j2rutlklmgmbmdvohf.streamlit.app/
+
+- **Student side:** open the app and report a lost or found item in the chat.
+- **Officer side:** open the **Security officer** tab and log in with the demo password `Suwathi@2026`.
+
+Runs on demo data that resets when the app restarts. If it has been idle, click "wake up" and give it about 30 seconds.
 A multi-agent AI system that takes over the campus lost-and-found desk: it files lost and found reports from plain-language chat, matches them automatically, notifies likely owners, and verifies ownership **without the AI ever seeing the item's secret details** — then hands the final release decision to a human security officer.
 
 Built with **LangGraph** (multi-agent supervisor graph, human-in-the-loop, persistent memory) and **MCP** (Model Context Protocol server exposing all data and verification tools).
